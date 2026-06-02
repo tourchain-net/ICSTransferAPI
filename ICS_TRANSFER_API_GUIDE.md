@@ -85,6 +85,7 @@ The `booking-complete` webhook now accepts a more tolerant payload for optional 
     "luggage": 2,
     "oversizeLuggage": 0,
     "babyCarSeat": 0,
+    "boosterSeat": 0,
     "notes": "Additional notes if any",
     "pickUpDescription": "Hotel lobby, ground floor",
     "dropOffDescription": "Terminal 2 - International Airport",
@@ -158,6 +159,7 @@ The `booking-complete` webhook now accepts a more tolerant payload for optional 
 | `luggage`            | `integer` | ❌ No (default: `0`)                   | Number of luggage pieces. Must be >= 0                                           |
 | `oversizeLuggage`    | `integer` | ❌ No (default: `0`)                   | Oversize luggage. Accepts only `0` or `1`                                        |
 | `babyCarSeat`        | `integer` | ❌ No (default: `0`)                   | Baby car seat required. Accepts only `0` or `1`                                  |
+| `boosterSeat`        | `integer` | ❌ No (default: `0`)                   | Booster seat count. Accepts any positive integer                                 |
 | `notes`              | `string`  | ❌ No                                  | Additional notes                                                                 |
 | `pickUpDescription`  | `string`  | ❌ No                                  | Pick-up point description                                                        |
 | `dropOffDescription` | `string`  | ❌ No                                  | Drop-off point description                                                       |
@@ -238,6 +240,7 @@ The `booking-complete` webhook now accepts a more tolerant payload for optional 
 | `luggage`                      | Must be >= 0                                                               |
 | `oversizeLuggage`              | Must be `0` or `1` only                                                    |
 | `babyCarSeat`                  | Must be `0` or `1` only                                                    |
+| `boosterSeat`                  | Must be >= 0                                                               |
 | `accommodation_items`          | Must not be empty. At least 1 item required                                |
 | `accommodation_items[].id`     | Optional. Empty, `null`, and `N/A` are accepted                           |
 | `reservation.check_in`         | Must not be empty                                                          |
@@ -312,6 +315,7 @@ curl -X POST https://tourchain.icstravelgroup.com/tourchain/api/IcsTransfer/webh
       "luggage": 2,
       "oversizeLuggage": 0,
       "babyCarSeat": 0,
+      "boosterSeat": 0,
       "arrival": {
         "date": "2024-12-15",
         "time": "14:30",
@@ -467,6 +471,7 @@ curl -X POST https://tourchain.icstravelgroup.com/tourchain/api/IcsTransfer/webh
       "luggage": 3,
       "oversizeLuggage": 0,
       "babyCarSeat": 1,
+      "boosterSeat": 1,
       "notes": "Guest has an 18-month-old baby",
       "pickUpDescription": "Hotel lobby, ground floor",
       "dropOffDescription": "International Terminal T1",
@@ -544,6 +549,24 @@ curl -X DELETE https://tourchain.icstravelgroup.com/tourchain/api/IcsTransfer/we
   - `"arrival"` → `arrival` object is required
   - `"departure"` → `departure` object is required
   - `"arrival-and-departure"` → both `arrival` and `departure` objects are required
-- **`oversizeLuggage` and `babyCarSeat`** only accept integer values `0` or `1` (not boolean `true`/`false`).
+- **`oversizeLuggage` and `babyCarSeat`** only accept integer values `0` or `1` (not boolean `true`/`false`). `boosterSeat` accepts any positive integer.
 - **JWT Token** must be sent in the correct format: `Bearer <token>` (with a space between `Bearer` and the token).
 - The Cancel API returns **`404 Not Found`** when the booking number does not exist in the system.
+
+### Vehicle Data Saved from ICS Transfer
+
+When a booking is processed, the following fields from the request are persisted to each vehicle record in the downstream booking:
+
+| Request Field                          | Vehicle Field          | Source                          |
+|----------------------------------------|------------------------|----------------------------------|
+| `transfer_information.luggage`         | `luggage`              | `transferInformation`            |
+| `transfer_information.oversizeLuggage` | `oversizeLuggage`      | `transferInformation`            |
+| `transfer_information.babyCarSeat`     | `babyCarSeat`          | `transferInformation`            |
+| `transfer_information.boosterSeat`     | `boosterSeat`          | `transferInformation`            |
+| `arrival.adults` / `departure.adults`  | `adultsCount`          | Leg document                    |
+| `arrival.children` / `departure.children` | `childrenCount`     | Leg document                    |
+| (resolved from leg services)           | `packageName`          | `ResolveVehiclePackageContext`   |
+| (resolved from leg services)           | `packageInternalName`  | `ResolveVehiclePackageContext`   |
+| (resolved from leg)                    | `flightInfo`           | Built from flight number + time  |
+| (resolved from transfer)               | `hotelName`            | Resolved from accommodation items|
+| (resolved from transfer)               | `pickupPoint` / `dropOffPoint` | Resolved from leg route  |
