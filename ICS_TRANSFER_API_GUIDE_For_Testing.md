@@ -65,7 +65,7 @@ The `booking-complete` webhook now accepts a more tolerant payload for optional 
 
 ---
 
-### 2.1 Request Body
+### 2.1 Request Body 
 
 ```json
 {
