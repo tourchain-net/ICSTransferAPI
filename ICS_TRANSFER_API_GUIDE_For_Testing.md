@@ -95,7 +95,10 @@ The `booking-complete` webhook now accepts a more tolerant payload for optional 
       "flightNumber": "VN123",
       "channelFareType": "DPS-AR-Z1SED",
       "adults": 2,
-      "children": 1
+      "children": 1,
+      "voucherCode": "7SNWFY9S",
+      "pickUpDescription": "Ngurah Rai International Airport (DPS)",
+      "dropOffDescription": "The Ritz Carlton Bali"
     },
     "departure": {
       "date": "2024-12-20",
@@ -103,7 +106,10 @@ The `booking-complete` webhook now accepts a more tolerant payload for optional 
       "flightNumber": "VN456",
       "channelFareType": "DPS-DE-Z1SED",
       "adults": 2,
-      "children": 1
+      "children": 1,
+      "voucherCode": "CFQSAPP3",
+      "pickUpDescription": "The Ritz Carlton Bali",
+      "dropOffDescription": "Ngurah Rai International Airport (DPS)"
     }
   },
   "accommodation_items": [
@@ -161,8 +167,8 @@ The `booking-complete` webhook now accepts a more tolerant payload for optional 
 | `babyCarSeat` | `integer` | ❌ No (default: `0`) | Baby car seat required. Accepts only `0` or `1` |
 | `boosterSeat` | `integer` | ❌ No (default: `0`) | Booster seat count. Accepts any positive integer |
 | `notes` | `string` | ❌ No | Additional notes |
-| `pickUpDescription` | `string` | ❌ No | Pick-up point description |
-| `dropOffDescription` | `string` | ❌ No | Drop-off point description |
+| `pickUpDescription` | `string` | ❌ No | Booking-level pick-up point. Used as fallback when a leg has no `pickUpDescription` (swapped for the departure leg). Prefer the per-leg fields when hotels differ between legs |
+| `dropOffDescription` | `string` | ❌ No | Booking-level drop-off point. Used as fallback when a leg has no `dropOffDescription` |
 | `arrival` | `object` | ✅ When `type` includes `"arrival"` | Arrival transfer details. See `transfer leg` table below |
 | `departure` | `object` | ✅ When `type` includes `"departure"` | Departure transfer details. See `transfer leg` table below |
 
@@ -178,6 +184,9 @@ The `booking-complete` webhook now accepts a more tolerant payload for optional 
 | `channelFareType` | `string` | ❌ No | Transfer fare/service code used for downstream service sync. Can be empty, `null`, or `N/A` |
 | `adults` | `integer` | ✅ Yes | Number of adults. Must be &gt;= 1 |
 | `children` | `integer` | ❌ No (default: `0`) | Number of children. Must be &gt;= 0 |
+| `voucherCode` | `string` | ❌ No | LE voucher code for **this specific leg** (distinct from the root `number`). Persisted to the leg service/vehicle as `legVoucherCode` |
+| `pickUpDescription` | `string` | ❌ No | Pick-up point for this leg. When present, used directly for this leg's route (no arrival/departure swap). Falls back to the top-level `pickUpDescription` if omitted |
+| `dropOffDescription` | `string` | ❌ No | Drop-off point for this leg. When present, used directly for this leg's route. Falls back to the top-level `dropOffDescription` if omitted |
 
 ---
 
@@ -565,8 +574,9 @@ When a booking is processed, the following fields from the request are persisted
 | `transfer_information.boosterSeat` | `boosterSeat` | `transferInformation` |
 | `arrival.adults` / `departure.adults` | `adultsCount` | Leg document |
 | `arrival.children` / `departure.children` | `childrenCount` | Leg document |
+| `arrival.voucherCode` / `departure.voucherCode` | `legVoucherCode` | Leg document (per-leg voucher; root `number` still maps to `voucherCode`) |
 | (resolved from leg services) | `packageName` | `ResolveVehiclePackageContext` |
 | (resolved from leg services) | `packageInternalName` | `ResolveVehiclePackageContext` |
 | (resolved from leg) | `flightInfo` | Built from flight number + time |
 | (resolved from transfer) | `hotelName` | Resolved from accommodation items |
-| (resolved from transfer) | `pickupPoint` / `dropOffPoint` | Resolved from leg route |
+| `arrival`/`departure` `pickUpDescription` / `dropOffDescription` | `pickupPoint` / `dropOffPoint` | Per-leg route when present; otherwise the top-level `pickUpDescription`/`dropOffDescription` (swapped for departure) |
