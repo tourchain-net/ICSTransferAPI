@@ -331,7 +331,10 @@ curl -X POST https://tourchain.icstravelgroup.com/tourchain/api/IcsTransfer/webh
         "flightNumber": "VN123",
         "channelFareType": "DPS-AR-Z1SED",
         "adults": 2,
-        "children": 0
+        "children": 0,
+        "voucherCode": "7SNWFY9S",
+        "pickUpDescription": "Ngurah Rai International Airport (DPS)",
+        "dropOffDescription": "The Ritz Carlton Bali"
       }
     },
     "accommodation_items": [
@@ -490,7 +493,10 @@ curl -X POST https://tourchain.icstravelgroup.com/tourchain/api/IcsTransfer/webh
         "flightNumber": "VN7201",
         "channelFareType": "DAD-AR-Z1SED",
         "adults": 2,
-        "children": 1
+        "children": 1,
+        "voucherCode": "7SNWFY9S",
+        "pickUpDescription": "Da Nang International Airport (DAD)",
+        "dropOffDescription": "InterContinental Danang Sun Peninsula"
       },
       "departure": {
         "date": "2024-12-27",
@@ -498,7 +504,10 @@ curl -X POST https://tourchain.icstravelgroup.com/tourchain/api/IcsTransfer/webh
         "flightNumber": "VN7202",
         "channelFareType": "DAD-DE-Z1SED",
         "adults": 2,
-        "children": 1
+        "children": 1,
+        "voucherCode": "CFQSAPP3",
+        "pickUpDescription": "InterContinental Danang Sun Peninsula",
+        "dropOffDescription": "Da Nang International Airport (DAD)"
       }
     },
     "accommodation_items": [
