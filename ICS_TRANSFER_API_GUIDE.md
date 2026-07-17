@@ -32,7 +32,7 @@ The JWT token is signed with `HS256` using the `JwtSecret` configured on the ser
 ### Example Header
 
 ```http
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6Imljcy1hcGktc2VydmljZSIsInJvbGUiOiJBZG1pbiIsInN1YiI6Imljcy1pbnRlZ3JhdGlvbiJ9.4F7TpC39-UNR4HVtQ3bKANaGE1Gh8qrHb0vX6-Vk_c4
+Authorization: Bearer <jwt_token>
 Content-Type: application/json
 ```
 
@@ -309,7 +309,7 @@ The `booking-complete` webhook now accepts a more tolerant payload for optional 
 
 ```bash
 curl -X POST https://tourchain.icstravelgroup.com/tourchain/api/IcsTransfer/webhook/booking-complete \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6Imljcy1hcGktc2VydmljZSIsInJvbGUiOiJBZG1pbiIsInN1YiI6Imljcy1pbnRlZ3JhdGlvbiJ9.4F7TpC39-UNR4HVtQ3bKANaGE1Gh8qrHb0vX6-Vk_c4" \
+  -H "Authorization: Bearer <jwt_token>" \
   -H "Content-Type: application/json" \
   -d '{
     "number": "B2024-001234",
@@ -446,7 +446,7 @@ When the API is called, the system performs the following steps:
 
 ```bash
 curl -X DELETE https://tourchain.icstravelgroup.com/tourchain/api/IcsTransfer/webhook/cancel/B2024-001234 \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6Imljcy1hcGktc2VydmljZSIsInJvbGUiOiJBZG1pbiIsInN1YiI6Imljcy1pbnRlZ3JhdGlvbiJ9.4F7TpC39-UNR4HVtQ3bKANaGE1Gh8qrHb0vX6-Vk_c4"
+  -H "Authorization: Bearer <jwt_token>"
 ```
 
 ## 4. HTTP Status Codes Summary
@@ -464,7 +464,7 @@ curl -X DELETE https://tourchain.icstravelgroup.com/tourchain/api/IcsTransfer/we
 
 ```bash
 curl -X POST https://tourchain.icstravelgroup.com/tourchain/api/IcsTransfer/webhook/booking-complete \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6Imljcy1hcGktc2VydmljZSIsInJvbGUiOiJBZG1pbiIsInN1YiI6Imljcy1pbnRlZ3JhdGlvbiJ9.4F7TpC39-UNR4HVtQ3bKANaGE1Gh8qrHb0vX6-Vk_c4" \
+  -H "Authorization: Bearer <jwt_token>" \
   -H "Content-Type: application/json" \
   -d '{
     "number": "B2024-VN-9988",
@@ -546,7 +546,7 @@ curl -X POST https://tourchain.icstravelgroup.com/tourchain/api/IcsTransfer/webh
 
 ```bash
 curl -X DELETE https://tourchain.icstravelgroup.com/tourchain/api/IcsTransfer/webhook/cancel/B2024-VN-9988 \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6Imljcy1hcGktc2VydmljZSIsInJvbGUiOiJBZG1pbiIsInN1YiI6Imljcy1pbnRlZ3JhdGlvbiJ9.4F7TpC39-UNR4HVtQ3bKANaGE1Gh8qrHb0vX6-Vk_c4"
+  -H "Authorization: Bearer <jwt_token>"
 ```
 
 **Response:**

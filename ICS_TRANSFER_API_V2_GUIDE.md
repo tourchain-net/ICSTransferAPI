@@ -21,7 +21,7 @@ Identical to V1 — all endpoints require a **Bearer JWT Token** in the request 
 ### Example Header
 
 ```http
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6Imljcy1hcGktc2VydmljZSIsInJvbGUiOiJBZG1pbiIsInN1YiI6Imljcy1pbnRlZ3JhdGlvbiJ9.4F7TpC39-UNR4HVtQ3bKANaGE1Gh8qrHb0vX6-Vk_c4
+Authorization: Bearer <jwt_token>
 Content-Type: application/json
 ```
 
@@ -266,7 +266,7 @@ The booking is validated synchronously and then queued for background processing
 
 ```bash
 curl -X POST https://tourchain.icstravelgroup.com/tourchain/api/v2/IcsTransfer/webhook/booking-complete \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6Imljcy1hcGktc2VydmljZSIsInJvbGUiOiJBZG1pbiIsInN1YiI6Imljcy1pbnRlZ3JhdGlvbiJ9.4F7TpC39-UNR4HVtQ3bKANaGE1Gh8qrHb0vX6-Vk_c4" \
+  -H "Authorization: Bearer <jwt_token>" \
   -H "Content-Type: application/json" \
   -d '{
     "number": "B2024-VN-9988",
@@ -416,7 +416,7 @@ Cancels an entire ICS transfer order by booking number and customer email. Use t
 
 ```bash
 curl -X POST https://tourchain.icstravelgroup.com/tourchain/api/v2/IcsTransfer/webhook/cancel \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6Imljcy1hcGktc2VydmljZSIsInJvbGUiOiJBZG1pbiIsInN1YiI6Imljcy1pbnRlZ3JhdGlvbiJ9.4F7TpC39-UNR4HVtQ3bKANaGE1Gh8qrHb0vX6-Vk_c4" \
+  -H "Authorization: Bearer <jwt_token>" \
   -H "Content-Type: application/json" \
   -d '{
     "number": "TC-DPS-000011",
@@ -441,7 +441,7 @@ curl -X POST https://tourchain.icstravelgroup.com/tourchain/api/v2/IcsTransfer/w
 
 ```bash
 curl -X POST https://tourchain.icstravelgroup.com/tourchain/api/v2/IcsTransfer/webhook/booking-complete \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6Imljcy1hcGktc2VydmljZSIsInJvbGUiOiJBZG1pbiIsInN1YiI6Imljcy1pbnRlZ3JhdGlvbiJ9.4F7TpC39-UNR4HVtQ3bKANaGE1Gh8qrHb0vX6-Vk_c4" \
+  -H "Authorization: Bearer <jwt_token>" \
   -H "Content-Type: application/json" \
   -d '{
     "number": "B2024-VN-9988",
@@ -623,7 +623,7 @@ A follow-up call that cancels only the second arrival car (`aaaaaaaa-0000-0000-0
 
 ```bash
 curl -X DELETE https://tourchain.icstravelgroup.com/tourchain/api/v2/IcsTransfer/webhook/cancel/B2024-VN-9988 \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6Imljcy1hcGktc2VydmljZSIsInJvbGUiOiJBZG1pbiIsInN1YiI6Imljcy1pbnRlZ3JhdGlvbiJ9.4F7TpC39-UNR4HVtQ3bKANaGE1Gh8qrHb0vX6-Vk_c4"
+  -H "Authorization: Bearer <jwt_token>"
 ```
 
 **Response:**

@@ -33,7 +33,7 @@ The JWT token is signed with `HS256` using the `JwtSecret` configured on the ser
 ### Example Header
 
 ```http
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6Imljcy1hcGktc2VydmljZSIsInJvbGUiOiJBZG1pbiIsInN1YiI6Imljcy1pbnRlZ3JhdGlvbiJ9.4F7TpC39-UNR4HVtQ3bKANaGE1Gh8qrHb0vX6-Vk_c4
+Authorization: Bearer <jwt_token>
 Content-Type: application/json
 ```
 
@@ -278,7 +278,7 @@ The booking is validated synchronously and then queued for background processing
 
 ```bash
 curl -X POST https://trial-dev.tourchain.net/b2badminapi/api/v2/IcsTransfer/webhook/booking-complete \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6Imljcy1hcGktc2VydmljZSIsInJvbGUiOiJBZG1pbiIsInN1YiI6Imljcy1pbnRlZ3JhdGlvbiJ9.4F7TpC39-UNR4HVtQ3bKANaGE1Gh8qrHb0vX6-Vk_c4" \
+  -H "Authorization: Bearer <jwt_token>" \
   -H "Content-Type: application/json" \
   -d '{
     "number": "B2024-VN-9988",
@@ -428,7 +428,7 @@ Cancels an entire ICS transfer order by booking number and customer email. Use t
 
 ```bash
 curl -X POST https://trial-dev.tourchain.net/b2badminapi/api/v2/IcsTransfer/webhook/cancel \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6Imljcy1hcGktc2VydmljZSIsInJvbGUiOiJBZG1pbiIsInN1YiI6Imljcy1pbnRlZ3JhdGlvbiJ9.4F7TpC39-UNR4HVtQ3bKANaGE1Gh8qrHb0vX6-Vk_c4" \
+  -H "Authorization: Bearer <jwt_token>" \
   -H "Content-Type: application/json" \
   -d '{
     "number": "TC-DPS-000011",
@@ -453,7 +453,7 @@ curl -X POST https://trial-dev.tourchain.net/b2badminapi/api/v2/IcsTransfer/webh
 
 ```bash
 curl -X POST https://trial-dev.tourchain.net/b2badminapi/api/v2/IcsTransfer/webhook/booking-complete \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6Imljcy1hcGktc2VydmljZSIsInJvbGUiOiJBZG1pbiIsInN1YiI6Imljcy1pbnRlZ3JhdGlvbiJ9.4F7TpC39-UNR4HVtQ3bKANaGE1Gh8qrHb0vX6-Vk_c4" \
+  -H "Authorization: Bearer <jwt_token>" \
   -H "Content-Type: application/json" \
   -d '{
     "number": "B2024-VN-9988",
@@ -635,7 +635,7 @@ A follow-up call that cancels only the second arrival car (`aaaaaaaa-0000-0000-0
 
 ```bash
 curl -X POST https://trial-dev.tourchain.net/b2badminapi/api/v2/IcsTransfer/webhook/cancel \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6Imljcy1hcGktc2VydmljZSIsInJvbGUiOiJBZG1pbiIsInN1YiI6Imljcy1pbnRlZ3JhdGlvbiJ9.4F7TpC39-UNR4HVtQ3bKANaGE1Gh8qrHb0vX6-Vk_c4" \
+  -H "Authorization: Bearer <jwt_token>" \
   -H "Content-Type: application/json" \
   -d '{
     "number": "B2024-VN-9988",
