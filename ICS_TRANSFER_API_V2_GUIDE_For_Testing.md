@@ -333,7 +333,7 @@ Unlike V1, where the arrival/departure objects were merged field-by-field, V2 tr
 3. **Missing `id`** — a leg that existed on a previous call but is **not present** in the current call's `legs[]` is automatically cancelled:
    - Its `status` is set by the **cancel time-limit rule** (default 24 hours, configurable via the admin cancel-policy config — see `ICS_CANCEL_POLICY_CONFIG_FE_GUIDE.md`): if the leg's `date` + `time` (in the booking country's local time, per-country UTC offset from config, default +8) is **more than the limit** away from the current time, the status is `"cancelled"`; if it is **within the limit** (or already in the past), the status is `"cancelled with charge"`. A leg with a missing/unparseable `date` gets `"cancelled"`; a missing `time` is treated as `00:00`.
    - The leg is moved into `transferInformation.cancelledLegs[]` with a `cancelledDate` and a `cancelPolicy` snapshot of the values used for the decision: `{ "cancelLimitHours": 24, "utcOffset": 7, "nation": "Vietnam" }`.
-   - Its downstream service/vehicle records are deactivated (`Deactive` / `DeactiveOPE = true`).
+   - Its downstream service/vehicle records are deactivated.
    - This happens automatically — you do not call a separate "remove leg" endpoint. To cancel a single car/leg, simply resend the booking without that leg's `id`.
 
 **Leg count is not fixed.** A booking may have 1 leg, a matched arrival/departure pair, or multiple legs per direction (e.g. two arrival cars and one departure car, or vice versa). Do not assume any pairing between arrival and departure legs.
@@ -360,17 +360,15 @@ Cancels an entire ICS transfer order by booking number and customer email. Use t
 | Field            | Type     | Required | Description                                                      |
 |------------------|----------|----------|------------------------------------------------------------------|
 | `number`         | `string` | ✅ Yes   | The booking/voucher number to cancel. e.g. `"TC-DPS-000011"`     |
-| `customer_email` | `string` | ✅ Yes   | Customer email to disambiguate when the same voucher exists on multiple leads. Must match the `customerEmail` field on the lead (case-insensitive exact match). |
+| `customer_email` | `string` | ✅ Yes   | Customer email to disambiguate when the same voucher number exists across multiple customers (case-insensitive exact match). |
 
 ### 4.2 Processing Flow
 
-1. Find all `LeadModel` (pipedriveTour) documents containing a booking with `icsBookings.voucherCode = number`.
-2. Filter in-memory by `customer_email` (case-insensitive match on `lead.customerEmail`). If none match, return `404` with a message listing the emails found on candidate leads.
-3. Set `status = "Cancelled"` on the matched booking, `updatedDate = DateTime.UtcNow`.
-4. Set the cancellation status on **every leg** in `transferInformation.legs[]` using the same **cancel time-limit rule** as booking-complete (cancel-policy config `ics_cancel_policy_configs`, default 24h): a leg further than the limit gets `"cancelled"`, a leg within the limit (or in the past) gets `"cancelled with charge"`. Each leg also gets `cancelledDate` and a `cancelPolicy` snapshot: `{ "cancelLimitHours": 24, "utcOffset": 8, "nation": "Indonesia" }`.
-5. **Per-leg targeted update** via arrayFilters — individual leg `status`, `cancelledDate`, and `cancelPolicy` are set without replacing the entire `legs[]` array, preserving any OPE state / user-entered `pickUpTime` on each leg.
-6. **Deactivate downstream services**: for services **without supplier assignment** → `deactive = true, deactiveOPE = true`. For services **with supplier assignment** (`lsAssignedService.vehicles` populated) → each `vehicle.status` is set to `"cancelled"` / `"cancelled with charge"` (matching the leg's resolved status), and `SupplierPortalBookingVehicles.SourceStatus` is synced accordingly.
-7. Write `LeadEditLog` (action: `UPDATE`, field: `status`, user: `ICS-System`) and `IcsTransferLog` (action: `CancelV2`).
+1. Look up the booking by `number`.
+2. Match by `customer_email` (case-insensitive). If no match is found, return `404` with a message listing the emails found on candidate bookings.
+3. Mark the booking as cancelled.
+4. Apply the **cancel time-limit rule** to every leg (same rule as booking-complete — cancel-policy config, default 24h): a leg further than the limit → `"cancelled"`, a leg within the limit or in the past → `"cancelled with charge"`. Each leg also gets `cancelledDate` and a `cancelPolicy` snapshot: `{ "cancelLimitHours": 24, "utcOffset": 8, "nation": "Indonesia" }`.
+5. Deactivate all downstream services and vehicles linked to the cancelled legs. Each vehicle's status is set to match its leg's resolved cancellation status (`"cancelled"` or `"cancelled with charge"`).
 
 ### 4.3 Success Response
 
@@ -662,7 +660,7 @@ curl -X POST https://trial-dev.tourchain.net/b2badminapi/api/v2/IcsTransfer/webh
 - **JWT Token** must be sent in the correct format: `Bearer <token>` (with a space between `Bearer` and the token).
 - **Every `booking-complete` call must resend the full, current set of legs.** Do not send only the legs that changed — any leg id omitted from the payload is treated as cancelled.
 - Leg `id` should be **stable and reused** across calls for the same physical leg/car — this is how the system tells "update this leg" apart from "add a new leg" and "cancel a leg by omission".
-- For backward compatibility with older dashboard views and downstream sync (search, task lists, realtime zone updates), the system internally derives a legacy-shaped `arrival` / `departure` sub-document from the first leg of each direction (marked `derivedFromLegs: true` in storage). This is an internal storage detail — LE does not need to produce or consume it — but note that if a booking has multiple legs in the same direction, older dashboard views built for V1 will only display the first leg of that direction.
+- For backward compatibility with older dashboard views and downstream sync, the system internally derives a legacy-shaped `arrival` / `departure` sub-document from the first leg of each direction. This is an internal detail — LE does not need to produce or consume it — but note that if a booking has multiple legs in the same direction, older dashboard views built for V1 will only display the first leg of that direction.
 - V1 (`/api/IcsTransfer`) and V2 (`/api/v2/IcsTransfer`) are independent endpoints with independent processing pipelines. Choose one version per booking `number` and do not send the same booking through both.
 
 ### Vehicle Data Saved from ICS Transfer V2
@@ -678,8 +676,8 @@ When a booking is processed, the following fields from the request are persisted
 | `legs[].adults`                        | `adultsCount`          | Leg document                     |
 | `legs[].children`                      | `childrenCount`        | Leg document                     |
 | `legs[].voucherCode`                   | `legVoucherCode`       | Leg document (per-leg voucher; root `number` still maps to `voucherCode`) |
-| (resolved from leg services)           | `packageName`          | `ResolveVehiclePackageContext`   |
-| (resolved from leg services)           | `packageInternalName`  | `ResolveVehiclePackageContext`   |
+| (resolved from leg services)           | `packageName`          | Resolved from leg services       |
+| (resolved from leg services)           | `packageInternalName`  | Resolved from leg services       |
 | (resolved from leg)                    | `flightInfo`           | Built from flight number + time  |
 | (resolved from transfer)               | `hotelName`            | Resolved from accommodation items|
 | `legs[].pickUpDescription` / `dropOffDescription` | `pickupPoint` / `dropOffPoint` | Per-leg route when present; otherwise the top-level `pickUpDescription`/`dropOffDescription` (swapped for departure legs) |
