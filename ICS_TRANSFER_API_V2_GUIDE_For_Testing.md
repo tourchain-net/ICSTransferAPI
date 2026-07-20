@@ -682,3 +682,778 @@ When a booking is processed, the following fields from the request are persisted
 | (resolved from transfer)               | `hotelName`            | Resolved from accommodation items|
 | `legs[].pickUpDescription` / `dropOffDescription` | `pickupPoint` / `dropOffPoint` | Per-leg route when present; otherwise the top-level `pickUpDescription`/`dropOffDescription` (swapped for departure legs) |
 | `legs[].notes`                          | `note`                  | Leg document                     |
+
+---
+
+## 10. Recommended Test Scenarios
+
+Use these scenarios to validate the V2 API integration end-to-end:
+
+| Scenario | How to Test | Expected Result |
+|----------|-------------|-----------------|
+| **Create new booking** | Call `POST /booking-complete` with a new `number` and 2 legs (1 arrival, 1 departure). All leg `id`s are new. | HTTP `200`. Both legs stored with `status: "confirmed"`. Downstream services created for each leg with a `channelFareType`. |
+| **Update a single leg** | Call `POST /booking-complete` with the same `number`. Keep the same leg `id`s but change one leg's `flightNumber`, `time`, or `notes`. | HTTP `200`. The updated leg is modified in-place. Other legs unchanged. Downstream service/vehicle links (e.g., `serviceAdded`, `pickUpTime`) preserved for the updated leg. |
+| **Cancel a single car by omitting leg** | Call `POST /booking-complete` with the same `number`. Omit one leg's `id` from `legs[]` while resending the others unchanged. | HTTP `200`. The omitted leg's `status` becomes `"cancelled"` or `"cancelled with charge"` based on the cancel time-limit rule (default 24h). Leg is moved to `cancelledLegs[]` with `cancelledDate` and `cancelPolicy` snapshot. Corresponding vehicle is deactivated. |
+| **Cancel entire booking order** | Call `POST /webhook/cancel` with the correct `number` and matching `customer_email`. | HTTP `200`. All legs are cancelled with status derived from cancel time-limit rule. All vehicles deactivated. Message: `"Booking cancelled successfully"`. |
+| **Cancel with wrong email** | Call `POST /webhook/cancel` with a valid `number` but incorrect `customer_email` that doesn't match any lead. | HTTP `404`. Response message lists the emails found on candidate leads: e.g., `"Booking 'TC-DPS-000011' found on 2 lead(s) with email(s) [alice@test.com, bob@test.com] — none match 'wrong@test.com'..."`. |
+| **Add a new leg to existing booking** | Call `POST /booking-complete` with the same `number`. Include all previous leg `id`s plus one new leg with a new unique `id`. | HTTP `200`. New leg stored with `status: "confirmed"`. If it has a `channelFareType`, a new downstream service is created. Previous legs updated if their fields changed, or left unchanged. |
+| **Missing booking number** | Call `POST /webhook/cancel` with an empty or missing `number` field. | HTTP `422`. Error message: `"Booking number is required"`. |
+| **Booking number does not exist** | Call `POST /webhook/cancel` with a `number` that does not exist in the system. | HTTP `404`. Error message: `"Booking 'NONEXISTENT' not found"`. |
+
+---
+
+## 10.1 Test Payloads and cURL Examples
+
+### Scenario 1: Create New Booking
+
+**Payload:**
+```json
+{
+  "number": "TEST-001-NEW",
+  "stopFollowUpButton": true,
+  "customer_email": "newcustomer@example.com",
+  "customer_given_name": "John",
+  "customer_surname": "Smith",
+  "customer_phone": "+61412345678",
+  "transfer_information": {
+    "checkInDate": "2026-08-15",
+    "checkOutDate": "2026-08-20",
+    "fullname": "John Smith",
+    "countryCodePhone": "61",
+    "phone": "412345678",
+    "luggage": 2,
+    "oversizeLuggage": 0,
+    "babyCarSeat": 0,
+    "boosterSeat": 0,
+    "pickUpDescription": "Sydney International Airport (SYD)",
+    "dropOffDescription": "Hilton Sydney",
+    "legs": [
+      {
+        "id": "aaaaaaaa-1111-1111-1111-111111111111",
+        "type": "arrival",
+        "date": "2026-08-15",
+        "time": "14:30",
+        "flightNumber": "QF001",
+        "channelFareType": "SYD-AR-Z1SED",
+        "adults": 2,
+        "children": 0,
+        "pickUpDescription": "Sydney International Airport (SYD)",
+        "dropOffDescription": "Hilton Sydney",
+        "notes": ""
+      },
+      {
+        "id": "bbbbbbbb-2222-2222-2222-222222222222",
+        "type": "departure",
+        "date": "2026-08-20",
+        "time": "11:00",
+        "flightNumber": "QF002",
+        "channelFareType": "SYD-DE-Z1SED",
+        "adults": 2,
+        "children": 0,
+        "pickUpDescription": "Hilton Sydney",
+        "dropOffDescription": "Sydney International Airport (SYD)",
+        "notes": ""
+      }
+    ]
+  },
+  "accommodation_items": [
+    {
+      "id": "hotel-001",
+      "reservation": {
+        "check_in": "2026-08-15",
+        "check_out": "2026-08-20",
+        "hotel_info": {
+          "id": "hilton-syd-001",
+          "name": "Hilton Sydney",
+          "geo_data": {
+            "country": "Australia",
+            "administrative_area_level_1": "New South Wales",
+            "place_id": "ChIJrTLr-GyuEmsRBfy61i59si0"
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+**cURL:**
+```bash
+curl -X POST https://trial-dev.tourchain.net/b2badminapi/api/v2/IcsTransfer/webhook/booking-complete \
+  -H "Authorization: Bearer <jwt_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "number": "TEST-001-NEW",
+    "stopFollowUpButton": true,
+    "customer_email": "newcustomer@example.com",
+    "customer_given_name": "John",
+    "customer_surname": "Smith",
+    "customer_phone": "+61412345678",
+    "transfer_information": {
+      "checkInDate": "2026-08-15",
+      "checkOutDate": "2026-08-20",
+      "fullname": "John Smith",
+      "countryCodePhone": "61",
+      "phone": "412345678",
+      "luggage": 2,
+      "oversizeLuggage": 0,
+      "babyCarSeat": 0,
+      "boosterSeat": 0,
+      "pickUpDescription": "Sydney International Airport (SYD)",
+      "dropOffDescription": "Hilton Sydney",
+      "legs": [
+        {
+          "id": "aaaaaaaa-1111-1111-1111-111111111111",
+          "type": "arrival",
+          "date": "2026-08-15",
+          "time": "14:30",
+          "flightNumber": "QF001",
+          "channelFareType": "SYD-AR-Z1SED",
+          "adults": 2,
+          "children": 0,
+          "pickUpDescription": "Sydney International Airport (SYD)",
+          "dropOffDescription": "Hilton Sydney",
+          "notes": ""
+        },
+        {
+          "id": "bbbbbbbb-2222-2222-2222-222222222222",
+          "type": "departure",
+          "date": "2026-08-20",
+          "time": "11:00",
+          "flightNumber": "QF002",
+          "channelFareType": "SYD-DE-Z1SED",
+          "adults": 2,
+          "children": 0,
+          "pickUpDescription": "Hilton Sydney",
+          "dropOffDescription": "Sydney International Airport (SYD)",
+          "notes": ""
+        }
+      ]
+    },
+    "accommodation_items": [
+      {
+        "id": "hotel-001",
+        "reservation": {
+          "check_in": "2026-08-15",
+          "check_out": "2026-08-20",
+          "hotel_info": {
+            "id": "hilton-syd-001",
+            "name": "Hilton Sydney",
+            "geo_data": {
+              "country": "Australia",
+              "administrative_area_level_1": "New South Wales",
+              "place_id": "ChIJrTLr-GyuEmsRBfy61i59si0"
+            }
+          }
+        }
+      }
+    ]
+  }'
+```
+
+**Expected Response:**
+```json
+{
+  "status": 200,
+  "message": "Booking accepted for processing"
+}
+```
+
+---
+
+### Scenario 2: Update a Single Leg
+
+Use the same `number` and leg `id`s as Scenario 1, but change the arrival leg's `flightNumber` and `time`.
+
+**Payload:**
+```json
+{
+  "number": "TEST-001-NEW",
+  "stopFollowUpButton": true,
+  "customer_email": "newcustomer@example.com",
+  "customer_given_name": "John",
+  "customer_surname": "Smith",
+  "customer_phone": "+61412345678",
+  "transfer_information": {
+    "checkInDate": "2026-08-15",
+    "checkOutDate": "2026-08-20",
+    "fullname": "John Smith",
+    "countryCodePhone": "61",
+    "phone": "412345678",
+    "luggage": 2,
+    "oversizeLuggage": 0,
+    "babyCarSeat": 0,
+    "boosterSeat": 0,
+    "pickUpDescription": "Sydney International Airport (SYD)",
+    "dropOffDescription": "Hilton Sydney",
+    "legs": [
+      {
+        "id": "aaaaaaaa-1111-1111-1111-111111111111",
+        "type": "arrival",
+        "date": "2026-08-15",
+        "time": "16:45",
+        "flightNumber": "QF101",
+        "channelFareType": "SYD-AR-Z1SED",
+        "adults": 2,
+        "children": 0,
+        "pickUpDescription": "Sydney International Airport (SYD)",
+        "dropOffDescription": "Hilton Sydney",
+        "notes": "Flight delayed, new ETA 16:45"
+      },
+      {
+        "id": "bbbbbbbb-2222-2222-2222-222222222222",
+        "type": "departure",
+        "date": "2026-08-20",
+        "time": "11:00",
+        "flightNumber": "QF002",
+        "channelFareType": "SYD-DE-Z1SED",
+        "adults": 2,
+        "children": 0,
+        "pickUpDescription": "Hilton Sydney",
+        "dropOffDescription": "Sydney International Airport (SYD)",
+        "notes": ""
+      }
+    ]
+  },
+  "accommodation_items": [
+    {
+      "id": "hotel-001",
+      "reservation": {
+        "check_in": "2026-08-15",
+        "check_out": "2026-08-20",
+        "hotel_info": {
+          "id": "hilton-syd-001",
+          "name": "Hilton Sydney",
+          "geo_data": {
+            "country": "Australia",
+            "administrative_area_level_1": "New South Wales",
+            "place_id": "ChIJrTLr-GyuEmsRBfy61i59si0"
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+**cURL:**
+```bash
+curl -X POST https://trial-dev.tourchain.net/b2badminapi/api/v2/IcsTransfer/webhook/booking-complete \
+  -H "Authorization: Bearer <jwt_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "number": "TEST-001-NEW",
+    "stopFollowUpButton": true,
+    "customer_email": "newcustomer@example.com",
+    "customer_given_name": "John",
+    "customer_surname": "Smith",
+    "customer_phone": "+61412345678",
+    "transfer_information": {
+      "checkInDate": "2026-08-15",
+      "checkOutDate": "2026-08-20",
+      "fullname": "John Smith",
+      "countryCodePhone": "61",
+      "phone": "412345678",
+      "luggage": 2,
+      "oversizeLuggage": 0,
+      "babyCarSeat": 0,
+      "boosterSeat": 0,
+      "pickUpDescription": "Sydney International Airport (SYD)",
+      "dropOffDescription": "Hilton Sydney",
+      "legs": [
+        {
+          "id": "aaaaaaaa-1111-1111-1111-111111111111",
+          "type": "arrival",
+          "date": "2026-08-15",
+          "time": "16:45",
+          "flightNumber": "QF101",
+          "channelFareType": "SYD-AR-Z1SED",
+          "adults": 2,
+          "children": 0,
+          "pickUpDescription": "Sydney International Airport (SYD)",
+          "dropOffDescription": "Hilton Sydney",
+          "notes": "Flight delayed, new ETA 16:45"
+        },
+        {
+          "id": "bbbbbbbb-2222-2222-2222-222222222222",
+          "type": "departure",
+          "date": "2026-08-20",
+          "time": "11:00",
+          "flightNumber": "QF002",
+          "channelFareType": "SYD-DE-Z1SED",
+          "adults": 2,
+          "children": 0,
+          "pickUpDescription": "Hilton Sydney",
+          "dropOffDescription": "Sydney International Airport (SYD)",
+          "notes": ""
+        }
+      ]
+    },
+    "accommodation_items": [
+      {
+        "id": "hotel-001",
+        "reservation": {
+          "check_in": "2026-08-15",
+          "check_out": "2026-08-20",
+          "hotel_info": {
+            "id": "hilton-syd-001",
+            "name": "Hilton Sydney",
+            "geo_data": {
+              "country": "Australia",
+              "administrative_area_level_1": "New South Wales",
+              "place_id": "ChIJrTLr-GyuEmsRBfy61i59si0"
+            }
+          }
+        }
+      }
+    ]
+  }'
+```
+
+**Expected Response:**
+```json
+{
+  "status": 200,
+  "message": "Booking accepted for processing"
+}
+```
+
+---
+
+### Scenario 3: Cancel a Single Car by Omitting Leg
+
+Use the same `number` and keep both leg `id`s, but remove the departure leg from the `legs[]` array.
+
+**Payload (departure leg omitted):**
+```json
+{
+  "number": "TEST-001-NEW",
+  "stopFollowUpButton": true,
+  "customer_email": "newcustomer@example.com",
+  "customer_given_name": "John",
+  "customer_surname": "Smith",
+  "customer_phone": "+61412345678",
+  "transfer_information": {
+    "checkInDate": "2026-08-15",
+    "checkOutDate": "2026-08-20",
+    "fullname": "John Smith",
+    "countryCodePhone": "61",
+    "phone": "412345678",
+    "luggage": 2,
+    "oversizeLuggage": 0,
+    "babyCarSeat": 0,
+    "boosterSeat": 0,
+    "pickUpDescription": "Sydney International Airport (SYD)",
+    "dropOffDescription": "Hilton Sydney",
+    "legs": [
+      {
+        "id": "aaaaaaaa-1111-1111-1111-111111111111",
+        "type": "arrival",
+        "date": "2026-08-15",
+        "time": "16:45",
+        "flightNumber": "QF101",
+        "channelFareType": "SYD-AR-Z1SED",
+        "adults": 2,
+        "children": 0,
+        "pickUpDescription": "Sydney International Airport (SYD)",
+        "dropOffDescription": "Hilton Sydney",
+        "notes": "Flight delayed, new ETA 16:45"
+      }
+    ]
+  },
+  "accommodation_items": [
+    {
+      "id": "hotel-001",
+      "reservation": {
+        "check_in": "2026-08-15",
+        "check_out": "2026-08-20",
+        "hotel_info": {
+          "id": "hilton-syd-001",
+          "name": "Hilton Sydney",
+          "geo_data": {
+            "country": "Australia",
+            "administrative_area_level_1": "New South Wales",
+            "place_id": "ChIJrTLr-GyuEmsRBfy61i59si0"
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+**cURL:**
+```bash
+curl -X POST https://trial-dev.tourchain.net/b2badminapi/api/v2/IcsTransfer/webhook/booking-complete \
+  -H "Authorization: Bearer <jwt_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "number": "TEST-001-NEW",
+    "stopFollowUpButton": true,
+    "customer_email": "newcustomer@example.com",
+    "customer_given_name": "John",
+    "customer_surname": "Smith",
+    "customer_phone": "+61412345678",
+    "transfer_information": {
+      "checkInDate": "2026-08-15",
+      "checkOutDate": "2026-08-20",
+      "fullname": "John Smith",
+      "countryCodePhone": "61",
+      "phone": "412345678",
+      "luggage": 2,
+      "oversizeLuggage": 0,
+      "babyCarSeat": 0,
+      "boosterSeat": 0,
+      "pickUpDescription": "Sydney International Airport (SYD)",
+      "dropOffDescription": "Hilton Sydney",
+      "legs": [
+        {
+          "id": "aaaaaaaa-1111-1111-1111-111111111111",
+          "type": "arrival",
+          "date": "2026-08-15",
+          "time": "16:45",
+          "flightNumber": "QF101",
+          "channelFareType": "SYD-AR-Z1SED",
+          "adults": 2,
+          "children": 0,
+          "pickUpDescription": "Sydney International Airport (SYD)",
+          "dropOffDescription": "Hilton Sydney",
+          "notes": "Flight delayed, new ETA 16:45"
+        }
+      ]
+    },
+    "accommodation_items": [
+      {
+        "id": "hotel-001",
+        "reservation": {
+          "check_in": "2026-08-15",
+          "check_out": "2026-08-20",
+          "hotel_info": {
+            "id": "hilton-syd-001",
+            "name": "Hilton Sydney",
+            "geo_data": {
+              "country": "Australia",
+              "administrative_area_level_1": "New South Wales",
+              "place_id": "ChIJrTLr-GyuEmsRBfy61i59si0"
+            }
+          }
+        }
+      }
+    ]
+  }'
+```
+
+**Expected Response:**
+```json
+{
+  "status": 200,
+  "message": "Booking accepted for processing"
+}
+```
+
+**Expected State Change:** The departure leg (`bbbbbbbb-2222-2222-2222-222222222222`) is automatically moved to `cancelledLegs[]` with status `"cancelled"` or `"cancelled with charge"` (based on cancel time-limit rule). The corresponding vehicle is deactivated.
+
+---
+
+### Scenario 4: Cancel Entire Booking Order
+
+Cancel the whole booking using the `/webhook/cancel` endpoint.
+
+**Payload:**
+```json
+{
+  "number": "TEST-001-NEW",
+  "customer_email": "newcustomer@example.com"
+}
+```
+
+**cURL:**
+```bash
+curl -X POST https://trial-dev.tourchain.net/b2badminapi/api/v2/IcsTransfer/webhook/cancel \
+  -H "Authorization: Bearer <jwt_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "number": "TEST-001-NEW",
+    "customer_email": "newcustomer@example.com"
+  }'
+```
+
+**Expected Response:**
+```json
+{
+  "status": 200,
+  "message": "Booking cancelled successfully"
+}
+```
+
+**Expected State Change:** All legs (arrival and any remaining legs) are moved to `cancelledLegs[]` with status determined by cancel time-limit rule. All vehicles are deactivated.
+
+---
+
+### Scenario 5: Cancel with Wrong Email
+
+Attempt to cancel with an incorrect `customer_email`.
+
+**Payload:**
+```json
+{
+  "number": "TEST-001-NEW",
+  "customer_email": "wrongemail@example.com"
+}
+```
+
+**cURL:**
+```bash
+curl -X POST https://trial-dev.tourchain.net/b2badminapi/api/v2/IcsTransfer/webhook/cancel \
+  -H "Authorization: Bearer <jwt_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "number": "TEST-001-NEW",
+    "customer_email": "wrongemail@example.com"
+  }'
+```
+
+**Expected Response (404):**
+```json
+{
+  "status": 404,
+  "error": 1,
+  "messages": {
+    "type": "error",
+    "message": "Booking 'TEST-001-NEW' found on 1 lead(s) with email(s) [newcustomer@example.com] — none match 'wrongemail@example.com'. Provide the correct customer_email to cancel."
+  }
+}
+```
+
+---
+
+### Scenario 6: Add a New Leg to Existing Booking
+
+Use the same `number` and existing leg `id`s, but add a brand-new leg with a unique `id`.
+
+**Payload (with new departure leg added):**
+```json
+{
+  "number": "TEST-001-NEW",
+  "stopFollowUpButton": true,
+  "customer_email": "newcustomer@example.com",
+  "customer_given_name": "John",
+  "customer_surname": "Smith",
+  "customer_phone": "+61412345678",
+  "transfer_information": {
+    "checkInDate": "2026-08-15",
+    "checkOutDate": "2026-08-20",
+    "fullname": "John Smith",
+    "countryCodePhone": "61",
+    "phone": "412345678",
+    "luggage": 2,
+    "oversizeLuggage": 0,
+    "babyCarSeat": 0,
+    "boosterSeat": 0,
+    "pickUpDescription": "Sydney International Airport (SYD)",
+    "dropOffDescription": "Hilton Sydney",
+    "legs": [
+      {
+        "id": "aaaaaaaa-1111-1111-1111-111111111111",
+        "type": "arrival",
+        "date": "2026-08-15",
+        "time": "16:45",
+        "flightNumber": "QF101",
+        "channelFareType": "SYD-AR-Z1SED",
+        "adults": 2,
+        "children": 0,
+        "pickUpDescription": "Sydney International Airport (SYD)",
+        "dropOffDescription": "Hilton Sydney",
+        "notes": "Flight delayed, new ETA 16:45"
+      },
+      {
+        "id": "cccccccc-3333-3333-3333-333333333333",
+        "type": "departure",
+        "date": "2026-08-20",
+        "time": "11:00",
+        "flightNumber": "QF002",
+        "channelFareType": "SYD-DE-Z1SED",
+        "adults": 2,
+        "children": 0,
+        "pickUpDescription": "Hilton Sydney",
+        "dropOffDescription": "Sydney International Airport (SYD)",
+        "notes": "New departure car added"
+      }
+    ]
+  },
+  "accommodation_items": [
+    {
+      "id": "hotel-001",
+      "reservation": {
+        "check_in": "2026-08-15",
+        "check_out": "2026-08-20",
+        "hotel_info": {
+          "id": "hilton-syd-001",
+          "name": "Hilton Sydney",
+          "geo_data": {
+            "country": "Australia",
+            "administrative_area_level_1": "New South Wales",
+            "place_id": "ChIJrTLr-GyuEmsRBfy61i59si0"
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+**cURL:**
+```bash
+curl -X POST https://trial-dev.tourchain.net/b2badminapi/api/v2/IcsTransfer/webhook/booking-complete \
+  -H "Authorization: Bearer <jwt_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "number": "TEST-001-NEW",
+    "stopFollowUpButton": true,
+    "customer_email": "newcustomer@example.com",
+    "customer_given_name": "John",
+    "customer_surname": "Smith",
+    "customer_phone": "+61412345678",
+    "transfer_information": {
+      "checkInDate": "2026-08-15",
+      "checkOutDate": "2026-08-20",
+      "fullname": "John Smith",
+      "countryCodePhone": "61",
+      "phone": "412345678",
+      "luggage": 2,
+      "oversizeLuggage": 0,
+      "babyCarSeat": 0,
+      "boosterSeat": 0,
+      "pickUpDescription": "Sydney International Airport (SYD)",
+      "dropOffDescription": "Hilton Sydney",
+      "legs": [
+        {
+          "id": "aaaaaaaa-1111-1111-1111-111111111111",
+          "type": "arrival",
+          "date": "2026-08-15",
+          "time": "16:45",
+          "flightNumber": "QF101",
+          "channelFareType": "SYD-AR-Z1SED",
+          "adults": 2,
+          "children": 0,
+          "pickUpDescription": "Sydney International Airport (SYD)",
+          "dropOffDescription": "Hilton Sydney",
+          "notes": "Flight delayed, new ETA 16:45"
+        },
+        {
+          "id": "cccccccc-3333-3333-3333-333333333333",
+          "type": "departure",
+          "date": "2026-08-20",
+          "time": "11:00",
+          "flightNumber": "QF002",
+          "channelFareType": "SYD-DE-Z1SED",
+          "adults": 2,
+          "children": 0,
+          "pickUpDescription": "Hilton Sydney",
+          "dropOffDescription": "Sydney International Airport (SYD)",
+          "notes": "New departure car added"
+        }
+      ]
+    },
+    "accommodation_items": [
+      {
+        "id": "hotel-001",
+        "reservation": {
+          "check_in": "2026-08-15",
+          "check_out": "2026-08-20",
+          "hotel_info": {
+            "id": "hilton-syd-001",
+            "name": "Hilton Sydney",
+            "geo_data": {
+              "country": "Australia",
+              "administrative_area_level_1": "New South Wales",
+              "place_id": "ChIJrTLr-GyuEmsRBfy61i59si0"
+            }
+          }
+        }
+      }
+    ]
+  }'
+```
+
+**Expected Response:**
+```json
+{
+  "status": 200,
+  "message": "Booking accepted for processing"
+}
+```
+
+**Expected State Change:** The existing arrival leg (`aaaaaaaa-1111-1111-1111-111111111111`) remains unchanged. The new departure leg (`cccccccc-3333-3333-3333-333333333333`) is created with `status: "confirmed"`. A new downstream service is created for it.
+
+---
+
+### Scenario 7: Missing Booking Number
+
+Attempt to cancel without providing `number`.
+
+**Payload:**
+```json
+{
+  "customer_email": "newcustomer@example.com"
+}
+```
+
+**cURL:**
+```bash
+curl -X POST https://trial-dev.tourchain.net/b2badminapi/api/v2/IcsTransfer/webhook/cancel \
+  -H "Authorization: Bearer <jwt_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "customer_email": "newcustomer@example.com"
+  }'
+```
+
+**Expected Response (422):**
+```json
+{
+  "status": 422,
+  "error": 1,
+  "messages": {
+    "type": "error",
+    "message": "Booking number is required"
+  }
+}
+```
+
+---
+
+### Scenario 8: Booking Number Does Not Exist
+
+Attempt to cancel with a `number` that does not exist in the system.
+
+**Payload:**
+```json
+{
+  "number": "NONEXISTENT-BOOKING-123",
+  "customer_email": "newcustomer@example.com"
+}
+```
+
+**cURL:**
+```bash
+curl -X POST https://trial-dev.tourchain.net/b2badminapi/api/v2/IcsTransfer/webhook/cancel \
+  -H "Authorization: Bearer <jwt_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "number": "NONEXISTENT-BOOKING-123",
+    "customer_email": "newcustomer@example.com"
+  }'
+```
+
+**Expected Response (404):**
+```json
+{
+  "status": 404,
+  "error": 1,
+  "messages": {
+    "type": "error",
+    "message": "Booking 'NONEXISTENT-BOOKING-123' not found"
+  }
+}
+```
