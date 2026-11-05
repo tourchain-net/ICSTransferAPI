@@ -192,9 +192,11 @@ The leg carries `id` + `voucherCode` (see *Identification keys*) and the new `tr
 
 ## Full payload reference (every field)
 
-A real payload only ever holds the identification keys plus the fields that changed. The samples below set **every** field at once, so LE can build its model and validation in one pass.
+Both pushes use one endpoint, so they share one schema. The sample below sets **every** field the endpoint can receive, `transferStatus` included, so LE can build its model and validation in one pass.
 
-### Push 1: booking update, all fields
+A real payload never looks like this. It only holds the identification keys plus the fields that changed. `transferStatus` always arrives in its own update (Push 2): only `number`, `customer_email`, `legs[].id`, `legs[].voucherCode` and `legs[].transferStatus`, never mixed with booking fields.
+
+### All fields
 
 ```json
 {
@@ -225,7 +227,8 @@ A real payload only ever holds the identification keys plus the fields that chan
         "children": 1,
         "pickUpDescription": "Bali Denpasar International Airport (DPS)",
         "dropOffDescription": "Merusaka Nusa Dua",
-        "notes": "Guest has a 4-year-old child. Booster seat required."
+        "notes": "Guest has a 4-year-old child. Booster seat required.",
+        "transferStatus": "completed"
       },
       {
         "id": "66666666-7777-8888-9999-000000000000",
@@ -238,7 +241,8 @@ A real payload only ever holds the identification keys plus the fields that chan
         "children": 1,
         "pickUpDescription": "Merusaka Nusa Dua",
         "dropOffDescription": "Bali Denpasar International Airport (DPS)",
-        "notes": ""
+        "notes": "",
+        "transferStatus": "no-show"
       }
     ]
   }
@@ -272,32 +276,7 @@ A real payload only ever holds the identification keys plus the fields that chan
 | `transfer_information.legs[].pickUpDescription` | `string` | Leg pick-up point changed |
 | `transfer_information.legs[].dropOffDescription` | `string` | Leg drop-off point changed |
 | `transfer_information.legs[].notes` | `string` | Leg notes changed (`""` = cleared) |
-
-### Push 2: transfer status, all fields
-
-```json
-{
-  "number": "4BCE03",
-  "customer_email": "guest@example.com",
-  "transfer_information": {
-    "legs": [
-      {
-        "id": "66666666-7777-8888-9999-000000000000",
-        "voucherCode": "22CAA4FZ",
-        "transferStatus": "completed"
-      }
-    ]
-  }
-}
-```
-
-| Path | Type | When present |
-| --- | --- | --- |
-| `number` | `string` | Always |
-| `customer_email` | `string` | Always |
-| `transfer_information.legs[].id` | `string` | Always (exactly one leg) |
-| `transfer_information.legs[].voucherCode` | `string` | Always |
-| `transfer_information.legs[].transferStatus` | `string` | Always: `completed`, `cancelled`, `no-show` or `go-show` |
+| `transfer_information.legs[].transferStatus` | `string` | Push 2 only: `completed`, `cancelled`, `no-show` or `go-show`. Sent alone with the keys, exactly one leg per payload (see *Push 2*) |
 
 ---
 
