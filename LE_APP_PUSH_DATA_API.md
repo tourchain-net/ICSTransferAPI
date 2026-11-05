@@ -13,7 +13,7 @@ Tourchain will push two kinds of updates back to Luxury Escapes (LE). Each paylo
 | Push | Triggered from | Carries |
 | --- | --- | --- |
 | Push 1: booking update | Reservations dashboard (Edit Service), OPE supplier dashboard, and booking confirmation | Booking confirmation status and updated transfer details |
-| Push 2: transfer status | OPE supplier dashboard | Operational transfer status: completed, cancelled, no-show, go-show |
+| Push 2: transfer status | OPE supplier dashboard | Operational transfer status: confirmed (transfer done), cancelled, no-show, go-show |
 
 **Same contract as the inbound API.** Every payload is a subset of the `booking-complete` request LE already sends us through ICS Transfer API V2 (`POST /api/v2/IcsTransfer/webhook/booking-complete`). It uses the same structure, key names, casing and value formats, so LE can parse it with the model it already uses to build that request. The only keys that are not in the V2 request are `customer_email_update`, `legs[].pickUpTime` and `legs[].transferStatus`.
 
@@ -163,10 +163,12 @@ This push is sent when ICS operations sets the outcome of a transfer leg on the 
 
 | Value | Meaning |
 | --- | --- |
-| `completed` | The guest was picked up and the transfer was done. Also sent when ICS sets a status back after a mistake |
+| `confirmed` | The transfer ran: the guest was picked up and carried (this is LE's "Completed"). Also sent when ICS sets a status back after a mistake |
 | `cancelled` | The transfer did not run because it was cancelled |
 | `no-show` | The driver was there; the guest did not come |
 | `go-show` | The guest turned up for a transfer that was not planned for them, and was carried |
+
+These are exactly the four transfer statuses ICS operations sets on the OPE dashboard, sent in lowercase. A leg with no status set yet is not pushed.
 
 #### Request body
 
@@ -228,7 +230,7 @@ A real payload never looks like this. It only holds the identification keys plus
         "pickUpDescription": "Bali Denpasar International Airport (DPS)",
         "dropOffDescription": "Merusaka Nusa Dua",
         "notes": "Guest has a 4-year-old child. Booster seat required.",
-        "transferStatus": "completed"
+        "transferStatus": "confirmed"
       },
       {
         "id": "66666666-7777-8888-9999-000000000000",
@@ -276,7 +278,18 @@ A real payload never looks like this. It only holds the identification keys plus
 | `transfer_information.legs[].pickUpDescription` | `string` | Leg pick-up point changed |
 | `transfer_information.legs[].dropOffDescription` | `string` | Leg drop-off point changed |
 | `transfer_information.legs[].notes` | `string` | Leg notes changed (`""` = cleared) |
-| `transfer_information.legs[].transferStatus` | `string` | Push 2 only: `completed`, `cancelled`, `no-show` or `go-show`. Sent alone with the keys, exactly one leg per payload (see *Push 2*) |
+| `transfer_information.legs[].transferStatus` | `string` | Push 2 only: `confirmed`, `cancelled`, `no-show` or `go-show` (see the note below). Sent alone with the keys, exactly one leg per payload |
+
+**Note: `transferStatus` values.** They are the four transfer statuses ICS operations sets on the OPE dashboard, in lowercase:
+
+| `transferStatus` | OPE status | Meaning for LE |
+| --- | --- | --- |
+| `confirmed` | Confirmed | The transfer ran: the guest was picked up and carried. This is LE's "Completed". Also sent when ICS corrects a status set by mistake |
+| `cancelled` | Cancelled | The transfer did not run because it was cancelled |
+| `no-show` | No-Show | The driver was there; the guest did not come |
+| `go-show` | Go-Show | The guest turned up for a transfer that was not planned for them, and was carried |
+
+`transferStatus` is not the booking `status` (`Confirmed` / `Cancelled` / `Cancelled with charge` at root level, Push 1). One is the booking's confirmation state; the other is what happened to one transfer leg on the day.
 
 ---
 
@@ -374,7 +387,7 @@ LE will not find this `id`. It should find the leg by `voucherCode` `7SNWFY9S` i
 
 #### F. Transfer status corrected
 
-The operator set `no-show` by mistake and set the leg back to done. LE receives `completed`, which replaces the earlier `no-show`.
+The operator set `no-show` by mistake and set the leg back to done. LE receives `confirmed`, which replaces the earlier `no-show`.
 
 ```json
 {
@@ -385,7 +398,7 @@ The operator set `no-show` by mistake and set the leg back to done. LE receives 
       {
         "id": "66666666-7777-8888-9999-000000000000",
         "voucherCode": "22CAA4FZ",
-        "transferStatus": "completed"
+        "transferStatus": "confirmed"
       }
     ]
   }
