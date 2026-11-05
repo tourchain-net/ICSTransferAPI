@@ -1,0 +1,469 @@
+# Tourchain → Luxury Escapes App: Push Data API
+
+> **Date:** 2026-11-05
+> **Content-Type:** `application/json`
+> **Relationship to inbound V2:** every payload is a subset of the V2 `booking-complete` request (see [ICS_TRANSFER_API_V2_GUIDE.md](ICS_TRANSFER_API_V2_GUIDE.md)).
+
+---
+
+## Overview
+
+Tourchain will push two kinds of updates back to Luxury Escapes (LE). Each payload carries only the booking keys and the data that changed. The goal is to cut CS emails and calls by keeping LE's booking data in sync with what ICS operations has changed.
+
+| Push | Triggered from | Carries |
+| --- | --- | --- |
+| Push 1: booking update | Reservations dashboard (Edit Service), OPE supplier dashboard, and booking confirmation | Booking confirmation status and updated transfer details |
+| Push 2: transfer status | OPE supplier dashboard | Operational transfer status: completed, cancelled, no-show, go-show |
+
+**Same contract as the inbound API.** Every payload is a subset of the `booking-complete` request LE already sends us through ICS Transfer API V2 (`POST /api/v2/IcsTransfer/webhook/booking-complete`). It uses the same structure, key names, casing and value formats, so LE can parse it with the model it already uses to build that request. The only keys that are not in the V2 request are `customer_email_update`, `legs[].pickUpTime` and `legs[].transferStatus`.
+
+Re-assigning a supplier inside ICS does not trigger either push. LE only hears about changes that affect the guest.
+
+---
+
+## Authentication and transport
+
+We propose the same scheme LE already uses to call us: HTTPS `POST` with a JSON body and a Bearer token. If LE prefers an API key header, we can switch with a configuration change and no deployment.
+
+| Header | Value | Description |
+| --- | --- | --- |
+| `Authorization` | `Bearer <token issued by LE>` | Authenticates Tourchain |
+| `Content-Type` | `application/json` | Request content type |
+
+**One endpoint.** Both pushes are sent to the same LE endpoint (`POST <LE endpoint, to be provided by LE>`). LE tells them apart by content: only a transfer status update has `transfer_information.legs[].transferStatus`; a booking update never carries that key. If LE prefers two separate URLs, we can split them with a configuration change and no deployment.
+
+**Ordering.** Updates for the same booking `number` are sent one at a time, in the order they happened. An update is not sent until the earlier ones for that booking have been accepted, so LE can apply them in the order received.
+
+**Delivery.** We retry failed calls, so LE may receive the same update twice. Applying the same values again must be safe. Our retry policy is described under *Expected responses from LE*.
+
+---
+
+## Identification keys
+
+These keys are in every payload, whether or not they changed. Nothing else is sent unless it changed. Booking identity is `number` + `customer_email`, the same pair the V2 `webhook/cancel` endpoint uses, because one voucher number can belong to more than one customer.
+
+#### Booking (root, always sent)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `number` | `string` | LE booking number. Same value as `number` in the V2 request |
+| `customer_email` | `string` | The email LE has on file. **Fixed mapping key: it never carries a new value**, even when the email changed |
+| `customer_email_update` | `string` | Only when the email changed: the new email. LE should replace the stored email with it |
+
+#### Leg (sent for every leg in `transfer_information.legs[]`)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | `string` | The leg `id`. Matching key, as in V2 |
+| `voucherCode` | `string` | The leg voucher code. Always sent so LE can double-check the leg |
+
+Some bookings were first received through the V1 API and later migrated to V2 inside Tourchain. During that migration Tourchain generated the leg `id` itself, so LE will not recognise it. A leg that ICS operations added by hand also has a Tourchain-generated `id`. That is why every leg also carries `voucherCode`. The matching order is in *How LE should read the data* below.
+
+---
+
+## How LE should read the data
+
+Apply every payload in this order:
+
+1. **Find the booking** by `number` + `customer_email`. `customer_email` is always the email LE has on file, so this key never changes, even in the update that changes the email.
+    - **Booking not found: skip it.** Do not create a booking. Reply `404` and log the payload (`number`, `customer_email`, time received) so CS on both sides can check it. Tourchain also flags the update on its side.
+2. **Email change.** If `customer_email_update` is present, replace the booking's stored email with it, after the booking was found in step 1.
+3. **Find each leg** in `transfer_information.legs[]` by `id`.
+4. **Fallback by `voucherCode`.** If no leg in that booking matches the `id`, match the leg by `voucherCode` within the same booking. This covers legs migrated from V1, whose `id` was generated by Tourchain.
+5. **Still not found: create a new leg.** If neither `id` nor `voucherCode` matches, create a new leg on the booking from the data received, and flag it for manual comparison by LE CS. Do not reject the update.
+6. **Apply the fields.** Update only the fields present in the payload. A field that is absent stays unchanged; an empty string `""` means the value was cleared.
+
+**Bookings and legs created manually in Tourchain:**
+
+| Case | What Tourchain sends | What LE does |
+| --- | --- | --- |
+| A whole booking ICS created by hand in Tourchain (it never came from LE) | Nothing. Tourchain does not push these bookings, because LE has no record of their `number` | Nothing to do |
+| A leg ICS added by hand to a booking that came from LE | The leg, with a Tourchain-generated `id` and `voucherCode` | Create the leg (step 5) and flag it for manual comparison |
+| Any payload whose booking LE cannot find | The update as usual | Skip it, reply `404`, and log it for checking (step 1) |
+
+---
+
+## Update semantics and value formats
+
+Payloads are **sparse**: apart from the identification keys, a key that is present has changed and a key that is absent has not. This is the opposite of the V2 inbound rule for legs, so please do not reuse the V2 update logic as it stands.
+
+| Rule | Outbound (this API) | Inbound V2 `booking-complete` |
+| --- | --- | --- |
+| Legs in `legs[]` | Only legs with at least one changed field | The complete set of legs |
+| A leg missing from `legs[]` | Unchanged. **Never** a cancellation | Cancelled |
+| A key missing from an object | Unchanged | Field is optional / defaulted |
+| Empty string `""` | The value was cleared | Accepted as empty |
+
+Two groups of fields always travel together: `adults` + `children` (either changed), and `countryCodePhone` + `phone` (either changed).
+
+**Value formats follow V2:**
+
+- Dates: `"YYYY-MM-DD"`
+- Times: `"HH:mm"` (24h), local time at the destination, as in V2
+- `babyCarSeat`: integer `0` or `1`
+- `boosterSeat`, `adults`, `children`: non-negative integer
+- Booking `status`: `"Confirmed"`, `"Cancelled"` or `"Cancelled with charge"`
+- `transferStatus`: lowercase, as listed under Push 2
+
+---
+
+## Push 1: booking update
+
+`POST <LE endpoint>` (the single endpoint, see *One endpoint*)
+
+This push is sent when someone in the Reservations dashboard or the OPE supplier dashboard saves a change to any field below, or when a booking becomes Confirmed. A save that changes nothing sends nothing. Changes that LE itself sent through V2 are not echoed back.
+
+#### Field mapping
+
+| Requested field | Key (V2 path) | Notes |
+| --- | --- | --- |
+| Booking confirmation | `status` | `"Confirmed"` when ICS confirms the booking. Also sent if the dashboard sets `"Cancelled"` |
+| Travel date | `transfer_information.legs[].date` | Plus `transfer_information.checkInDate` / `checkOutDate` when those change |
+| Pickup location | `transfer_information.legs[].pickUpDescription` | Per leg, as in V2 |
+| Drop-off location | `transfer_information.legs[].dropOffDescription` | Per leg, as in V2 |
+| Total passengers | `transfer_information.legs[].adults` + `children` | V2 has no total field; total = adults + children |
+| Phone number | `transfer_information.countryCodePhone` + `phone` | Root `customer_phone` when the customer phone changes |
+| Child seat | `transfer_information.babyCarSeat`, `boosterSeat` | Integers, as in V2 |
+| Pickup time | `transfer_information.legs[].pickUpTime` | **Not in the V2 request.** Time the driver will pick the guest up, set by ICS |
+| Flight number | `transfer_information.legs[].flightNumber` | Plus `legs[].time` (flight time) when it changes |
+| Email address | `customer_email_update` | New email. `customer_email` still holds the old one to find the booking |
+| Guest name | `transfer_information.fullname` | As in V2 |
+| Notes | `transfer_information.legs[].notes` | Per leg, as in V2 |
+
+#### Request body
+
+```json
+{
+  "number": "4BCE03",
+  "customer_email": "guest@example.com",
+  "transfer_information": {
+    "babyCarSeat": 1,
+    "legs": [
+      {
+        "id": "11111111-2222-3333-4444-555555555555",
+        "voucherCode": "5GRRSFAQ",
+        "time": "14:05",
+        "flightNumber": "QF43",
+        "pickUpTime": "14:45"
+      }
+    ]
+  }
+}
+```
+
+---
+
+## Push 2: transfer status
+
+`POST <LE endpoint>` (the same endpoint as Push 1)
+
+This push is sent when ICS operations sets the outcome of a transfer leg on the OPE dashboard. It follows the V2 structure: the status sits on the leg it belongs to, and the payload holds one leg. Changing or re-assigning the supplier does not send this push.
+
+#### `transferStatus` values
+
+| Value | Meaning |
+| --- | --- |
+| `completed` | The guest was picked up and the transfer was done. Also sent when ICS sets a status back after a mistake |
+| `cancelled` | The transfer did not run because it was cancelled |
+| `no-show` | The driver was there; the guest did not come |
+| `go-show` | The guest turned up for a transfer that was not planned for them, and was carried |
+
+#### Request body
+
+The leg carries `id` + `voucherCode` (see *Identification keys*) and the new `transferStatus`.
+
+```json
+{
+  "number": "4BCE03",
+  "customer_email": "guest@example.com",
+  "transfer_information": {
+    "legs": [
+      {
+        "id": "66666666-7777-8888-9999-000000000000",
+        "voucherCode": "22CAA4FZ",
+        "transferStatus": "no-show"
+      }
+    ]
+  }
+}
+```
+
+---
+
+## Full payload reference (every field)
+
+A real payload only ever holds the identification keys plus the fields that changed. The samples below set **every** field at once, so LE can build its model and validation in one pass.
+
+### Push 1: booking update, all fields
+
+```json
+{
+  "number": "4BCE03",
+  "customer_email": "guest@example.com",
+  "customer_email_update": "new.guest@example.com",
+  "status": "Confirmed",
+  "customer_phone": "+61418302099",
+  "transfer_information": {
+    "fullname": "Laura M. Grant",
+    "countryCodePhone": "+61",
+    "phone": "418302099",
+    "checkInDate": "2026-11-05",
+    "checkOutDate": "2026-11-10",
+    "babyCarSeat": 1,
+    "boosterSeat": 1,
+    "pickUpDescription": "Merusaka Nusa Dua - main lobby",
+    "dropOffDescription": "Bali Denpasar International Airport (DPS)",
+    "legs": [
+      {
+        "id": "11111111-2222-3333-4444-555555555555",
+        "voucherCode": "5GRRSFAQ",
+        "date": "2026-11-05",
+        "time": "14:05",
+        "flightNumber": "QF43",
+        "pickUpTime": "14:45",
+        "adults": 2,
+        "children": 1,
+        "pickUpDescription": "Bali Denpasar International Airport (DPS)",
+        "dropOffDescription": "Merusaka Nusa Dua",
+        "notes": "Guest has a 4-year-old child. Booster seat required."
+      },
+      {
+        "id": "66666666-7777-8888-9999-000000000000",
+        "voucherCode": "22CAA4FZ",
+        "date": "2026-11-10",
+        "time": "18:30",
+        "flightNumber": "QF44",
+        "pickUpTime": "15:00",
+        "adults": 2,
+        "children": 1,
+        "pickUpDescription": "Merusaka Nusa Dua",
+        "dropOffDescription": "Bali Denpasar International Airport (DPS)",
+        "notes": ""
+      }
+    ]
+  }
+}
+```
+
+| Path | Type | When present |
+| --- | --- | --- |
+| `number` | `string` | Always |
+| `customer_email` | `string` | Always: the email LE has on file (never the new one) |
+| `customer_email_update` | `string` | Email changed: the new email |
+| `status` | `string` | Booking status changed to `Confirmed`, `Cancelled` or `Cancelled with charge` |
+| `customer_phone` | `string` | Customer phone changed |
+| `transfer_information.fullname` | `string` | Guest name changed |
+| `transfer_information.countryCodePhone` | `string` | Either phone field changed (sent together with `phone`) |
+| `transfer_information.phone` | `string` | Either phone field changed (sent together with `countryCodePhone`) |
+| `transfer_information.checkInDate` | `string` `YYYY-MM-DD` | Check-in date changed |
+| `transfer_information.checkOutDate` | `string` `YYYY-MM-DD` | Check-out date changed |
+| `transfer_information.babyCarSeat` | `integer` 0/1 | Baby car seat changed |
+| `transfer_information.boosterSeat` | `integer` ≥ 0 | Booster seat changed |
+| `transfer_information.pickUpDescription` | `string` | Booking-level pick-up point changed (fallback used by legs, as in V2) |
+| `transfer_information.dropOffDescription` | `string` | Booking-level drop-off point changed (fallback used by legs, as in V2) |
+| `transfer_information.legs[].id` | `string` | Always, for each leg sent |
+| `transfer_information.legs[].voucherCode` | `string` | Always, for each leg sent |
+| `transfer_information.legs[].date` | `string` `YYYY-MM-DD` | Travel date changed |
+| `transfer_information.legs[].time` | `string` `HH:mm` | Flight time changed |
+| `transfer_information.legs[].flightNumber` | `string` | Flight number changed |
+| `transfer_information.legs[].pickUpTime` | `string` `HH:mm` | Driver pick-up time changed (not in V2 request) |
+| `transfer_information.legs[].adults` | `integer` ≥ 1 | Either pax field changed (sent together with `children`) |
+| `transfer_information.legs[].children` | `integer` ≥ 0 | Either pax field changed (sent together with `adults`) |
+| `transfer_information.legs[].pickUpDescription` | `string` | Leg pick-up point changed |
+| `transfer_information.legs[].dropOffDescription` | `string` | Leg drop-off point changed |
+| `transfer_information.legs[].notes` | `string` | Leg notes changed (`""` = cleared) |
+
+### Push 2: transfer status, all fields
+
+```json
+{
+  "number": "4BCE03",
+  "customer_email": "guest@example.com",
+  "transfer_information": {
+    "legs": [
+      {
+        "id": "66666666-7777-8888-9999-000000000000",
+        "voucherCode": "22CAA4FZ",
+        "transferStatus": "completed"
+      }
+    ]
+  }
+}
+```
+
+| Path | Type | When present |
+| --- | --- | --- |
+| `number` | `string` | Always |
+| `customer_email` | `string` | Always |
+| `transfer_information.legs[].id` | `string` | Always (exactly one leg) |
+| `transfer_information.legs[].voucherCode` | `string` | Always |
+| `transfer_information.legs[].transferStatus` | `string` | Always: `completed`, `cancelled`, `no-show` or `go-show` |
+
+---
+
+## Examples
+
+Pickup time + flight change and a no-show are shown above. The cases below cover the rest.
+
+#### A. Booking confirmed
+
+```json
+{
+  "number": "4BCE03",
+  "customer_email": "guest@example.com",
+  "status": "Confirmed"
+}
+```
+
+#### B. Email, guest name and phone changed
+
+`customer_email` is still the email LE has on file, so LE finds the booking with it; `customer_email_update` is the new email to store.
+
+```json
+{
+  "number": "4BCE03",
+  "customer_email": "guest@example.com",
+  "customer_email_update": "new.guest@example.com",
+  "transfer_information": {
+    "fullname": "Laura M. Grant",
+    "countryCodePhone": "+61",
+    "phone": "418302099"
+  }
+}
+```
+
+#### C. Pickup point, child seat and notes changed on the OPE dashboard
+
+```json
+{
+  "number": "9KD27Q",
+  "customer_email": "guest2@example.com",
+  "transfer_information": {
+    "boosterSeat": 1,
+    "legs": [
+      {
+        "id": "66666666-7777-8888-9999-000000000000",
+        "voucherCode": "22CAA4FZ",
+        "pickUpDescription": "The Mulia, Nusa Dua - main lobby",
+        "notes": "Guest has 1 child aged 4. Booster seat required."
+      }
+    ]
+  }
+}
+```
+
+#### D. Two departure cars, only one changed
+
+The booking has two departure legs. Only the second car's passengers changed, so only that leg is sent. The first car is unchanged and still active.
+
+```json
+{
+  "number": "B2024-VN-9988",
+  "customer_email": "guest3@example.com",
+  "transfer_information": {
+    "legs": [
+      {
+        "id": "aaaa2222-bbbb-cccc-dddd-eeeeffff0002",
+        "voucherCode": "CFQSAPP4",
+        "adults": 3,
+        "children": 0
+      }
+    ]
+  }
+}
+```
+
+#### E. Leg migrated from V1 (Tourchain-generated id)
+
+LE will not find this `id`. It should find the leg by `voucherCode` `7SNWFY9S` instead.
+
+```json
+{
+  "number": "LE-OLD-7710",
+  "customer_email": "guest4@example.com",
+  "transfer_information": {
+    "legs": [
+      {
+        "id": "0b9f3c1e-5d7a-4e2b-8c6f-91a2b3c4d5e6",
+        "voucherCode": "7SNWFY9S",
+        "date": "2026-12-20"
+      }
+    ]
+  }
+}
+```
+
+#### F. Transfer status corrected
+
+The operator set `no-show` by mistake and set the leg back to done. LE receives `completed`, which replaces the earlier `no-show`.
+
+```json
+{
+  "number": "4BCE03",
+  "customer_email": "guest@example.com",
+  "transfer_information": {
+    "legs": [
+      {
+        "id": "66666666-7777-8888-9999-000000000000",
+        "voucherCode": "22CAA4FZ",
+        "transferStatus": "completed"
+      }
+    ]
+  }
+}
+```
+
+#### cURL
+
+```bash
+curl -X POST <LE endpoint> \
+  -H "Authorization: Bearer <token issued by LE>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "number": "4BCE03",
+    "customer_email": "guest@example.com",
+    "status": "Confirmed"
+  }'
+```
+
+---
+
+## Expected responses from LE
+
+We suggest LE replies in the same format our V2 API uses, so both sides log errors the same way. Any `2xx` counts as delivered.
+
+**200 OK**
+
+```json
+{
+  "status": 200,
+  "message": "Update applied"
+}
+```
+
+**422 Unprocessable Entity**: the payload is invalid
+
+```json
+{
+  "status": 422,
+  "error": 1,
+  "messages": {
+    "type": "error",
+    "message": {
+      "transfer_information.legs[0].pickUpTime": "Invalid time format"
+    }
+  }
+}
+```
+
+**404 Not Found**: no booking matches `number` + `customer_email`. Same body shape as 422. An unknown leg is not a 404: it is created and flagged (see *How LE should read the data*, step 5).
+
+#### Our behaviour per response
+
+| Response | What Tourchain does |
+| --- | --- |
+| `2xx` | Marks the update delivered and sends the next update for that booking |
+| `408`, `429`, `5xx`, timeout, connection error | Retries with backoff: 1 min, 5 min, 15 min, 1 h, then hourly, up to the agreed limit. Each retry sends the same payload |
+| `400`, `401`, `403`, `404`, `409`, `422` | No retry. The update is flagged for ICS support to review and resend by hand |
+
+Request timeout is 30 seconds.
